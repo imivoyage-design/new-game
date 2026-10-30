@@ -1,47 +1,34 @@
 'use strict';
-const layouts=[
- ['初见',[[240,80],[95,315],[385,315]], [0,1,2,0]],
- ['方寸',[[110,85],[370,85],[370,315],[110,315]],[0,1,2,3,0]],
- ['小屋',[[110,190],[240,70],[370,190],[370,320],[110,320]],[0,1,2,0,4,3,2]],
- ['菱光',[[240,55],[390,200],[240,345],[90,200],[240,200]],[0,1,2,3,0,4,2]],
- ['信笺',[[105,100],[375,100],[375,310],[105,310]],[0,1,2,3,0,2]],
- ['双峰',[[75,300],[185,100],[295,300],[405,100],[185,300]],[0,1,2,3,4,1]],
- ['风筝',[[240,55],[370,190],[240,335],[110,190],[240,190]],[0,1,2,3,0,4,1]],
- ['双叶',[[240,200],[100,80],[100,320],[380,80],[380,320]],[0,1,2,0,3,4,0]],
- ['桥间',[[75,100],[240,100],[405,100],[75,300],[240,300],[405,300]],[0,1,2,5,4,3,0,4,1]],
- ['山间',[[80,300],[80,130],[240,55],[400,130],[400,300],[240,200]],[0,1,2,3,4,0,5,1,3,5,4]],
- ['四叶',[[240,200],[110,70],[370,70],[370,330],[110,330],[240,50],[390,200],[240,350],[90,200]],[0,1,5,0,2,6,0,3,7,0,4,8,0]],
- ['回响',[[95,80],[385,80],[385,320],[95,320],[175,150],[305,150],[305,250],[175,250]],[0,1,2,3,0,4,5,6,7,4]],
- ['星芒',[[240,45],[390,150],[335,330],[145,330],[90,150]],[0,2,4,1,3,0,1,2,3,4,0]],
- ['折纸',[[90,90],[240,90],[390,90],[90,310],[240,310],[390,310],[240,200]],[0,1,2,5,4,3,0,6,2,4,6,1]],
- ['花窗',[[110,80],[370,80],[370,320],[110,320],[240,200],[240,80],[370,200],[240,320],[110,200]],[0,5,1,6,2,7,3,8,0,4,1]],
- ['六角',[[150,65],[330,65],[420,200],[330,335],[150,335],[60,200],[240,200]],[0,1,2,3,4,5,0,6,2,4,6,1,3,6,5]],
- ['连山',[[70,300],[155,110],[240,300],[325,110],[410,300],[240,55],[240,200]],[0,1,2,3,4,2,6,1,5,3,6]],
- ['织网',[[100,80],[240,80],[380,80],[100,200],[240,200],[380,200],[100,320],[240,320],[380,320]],[0,1,2,5,8,7,6,3,0,4,2]],
- ['环游',[[240,45],[390,125],[390,275],[240,355],[90,275],[90,125],[240,200]],[0,1,2,3,4,5,0,6,1,5,6,2,4,6,3]],
- ['相连',[[100,80],[240,80],[380,80],[100,200],[240,200],[380,200],[100,320],[240,320],[380,320]],[0,1,2,5,8,7,6,3,0,4,1,5,4,7,3]]
-];
-function graph([name,points,trail]){const edges=[],seen=new Set();for(let i=1;i<trail.length;i++){const a=trail[i-1],b=trail[i],p=points[a],q=points[b],dx=q[0]-p[0],dy=q[1]-p[1],len=dx*dx+dy*dy;const chain=points.map((r,n)=>({n,t:((r[0]-p[0])*dx+(r[1]-p[1])*dy)/len,cross:Math.abs((r[0]-p[0])*dy-(r[1]-p[1])*dx)})).filter(r=>r.t>=0&&r.t<=1&&r.cross<.01).sort((a,b)=>a.t-b.t);for(let j=1;j<chain.length;j++){const x=chain[j-1].n,y=chain[j].n,key=[x,y].sort((a,b)=>a-b).join('-');if(!seen.has(key)){seen.add(key);edges.push([x,y]);}}}return{name,points,edges};}
-const levels=layouts.map(graph);
-function solve(g,start){const adjacency=g.points.map(()=>[]);g.edges.forEach(([a,b],i)=>{adjacency[a].push([b,i]);adjacency[b].push([a,i]);});const odd=adjacency.map((a,i)=>a.length%2?i:-1).filter(i=>i>=0);if(odd.length!==0&&odd.length!==2)return null;if(start!==undefined&&odd.length===2&&!odd.includes(start))return null;const s=start??odd[0]??0,stack=[s],used=new Set(),route=[];while(stack.length){const v=stack.at(-1),edge=adjacency[v].find(e=>!used.has(e[1]));if(edge){used.add(edge[1]);stack.push(edge[0]);}else route.push(stack.pop());}return used.size===g.edges.length?route.reverse():null;}
-if(typeof module!=='undefined')module.exports={levels,solve};
+const levels = typeof DEMO_LEVELS !== 'undefined' ? DEMO_LEVELS : require('./levels.js');
+const mechanics = typeof LineMechanics !== 'undefined' ? LineMechanics : require('./mechanics.js');
+const chapters=['草原星球','奶油雲海','糖果森林','月光湖畔','冰晶王國','星砂沙漠','夢境銀河','願望之星'];
+function canTraverse(g, edge, from, to, state) {
+  const pair=g.edges[edge];
+  return !!pair&&pair.includes(from)&&pair.includes(to)&&!mechanics.reason(g,state||mechanics.initial(g,from),edge);
+}
+function solve(g,start){return mechanics.solve(g,start);}
+if(typeof module!=='undefined')module.exports={levels,solve,canTraverse};
 if (typeof document !== 'undefined') {
   const $ = s => document.querySelector(s);
   const svg = $('#board'), NS = 'http://www.w3.org/2000/svg';
   let saved = {};
-  try { saved = JSON.parse(localStorage.getItem('one-line-v1') || '{}') || {}; } catch {}
-  const completed = new Set((Array.isArray(saved.completed) ? saved.completed : []).filter(n => Number.isInteger(n) && n >= 0 && n < 20));
-  let unlocked = Math.min(19, Math.max(0, ...Array.from(completed, n => n + 1)));
+  try { saved = JSON.parse(localStorage.getItem('kirby-line-demo-v1') || localStorage.getItem('one-line-v1') || '{}') || {}; } catch {}
+  if (saved.puzzleSet !== 'dream-v3' && Array.isArray(saved.completed)) {
+    try { localStorage.setItem('kirby-line-archive-v1', JSON.stringify(saved)); } catch {}
+  }
+  const completed = new Set((Array.isArray(saved.completed) ? saved.completed.map(v=>typeof v==='string'?levels.findIndex(g=>g.id===v):v) : []).filter(n => Number.isInteger(n) && n >= 0 && n < levels.length));
+  let unlocked = Math.min(levels.length - 1, Math.max(0, ...Array.from(completed, n => n + 1)));
   let index = unlocked, sound = saved.sound === true, haptics = saved.haptics !== false;
-  let used = new Set(), route = [], history = [], current = -1, pointer = null, inputType = null;
+  let state=null, snapshots=[], hintState=null, portalPending=false, specialLabels=[], bridgeMarks=[];
+  let used = new Set(), counts = [], route = [], history = [], current = -1, pointer = null, inputType = null;
   let won = false, hintTimer = null, hintEdge = -1, hintNode = -1, last = null, audio;
-  let edgesDOM = [], nodesDOM = [], liveStroke, halo, cursorCore;
+  let doubleLabels = [], hintRoute = [], arrowsDOM = [], edgesDOM = [], nodesDOM = [], liveStroke, halo, cursorCore;
   let preview = null, selectedEdge = null, offTrack = false, frame = null, lastBuzz = 0;
   const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const supportsHaptics = typeof navigator.vibrate === 'function';
 
   function save() {
-    try { localStorage.setItem('one-line-v1', JSON.stringify({ completed: [...completed], sound, haptics })); } catch {}
+    try { localStorage.setItem('kirby-line-demo-v1', JSON.stringify({ puzzleSet: 'dream-v3', completed: [...completed].map(i=>levels[i].id), sound, haptics })); } catch {}
   }
   function vibrate(kind = 'node') {
     if (!haptics || !supportsHaptics || inputType === 'mouse') return;
@@ -73,26 +60,53 @@ if (typeof document !== 'undefined') {
   function buildBoard() {
     svg.replaceChildren();
     const g = levels[index];
+    counts=g.edges.map(()=>0);
     edgesDOM = g.edges.map(([a, b]) => {
       const line = element('line', { x1: g.points[a][0], y1: g.points[a][1], x2: g.points[b][0], y2: g.points[b][1], class: 'edge' });
       svg.append(line); return line;
     });
+    arrowsDOM = g.edges.map((_,i) => {
+      const direction=g.dynamicEdges?.[i] || g.onceEdges?.[i] || g.oneWay?.[i];if(!direction)return null;
+      const a=g.points[direction[0]],b=g.points[direction[1]],angle=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;
+      const arrow=element('path',{d:'M -9 -7 L 3 0 L -9 7',class:'one-way-arrow',transform:`translate(${(a[0]+b[0])/2} ${(a[1]+b[1])/2}) rotate(${angle})`,'aria-label':'單向線段'});
+      svg.append(arrow);return arrow;
+    });
+    doubleLabels=[];g.edges.forEach(([a,b],i)=>{if(mechanics.quota(g,i)===2){const p=g.points[a],q=g.points[b];const label=element('text',{x:(p[0]+q[0])/2,y:(p[1]+q[1])/2-13,class:'double-label'});label.textContent='×2';doubleLabels[i]=label;svg.append(label);}});
     liveStroke = element('line', { class: 'live-stroke', visibility: 'hidden' });
     svg.append(liveStroke);
+    arrowsDOM.forEach(arrow=>{if(arrow)svg.append(arrow);});
     nodesDOM = g.points.map(([x, y]) => {
       const node = element('circle', { cx: x, cy: y, r: 9, class: 'node' });
       svg.append(node); return node;
     });
+    specialLabels = g.points.map(([x,y],i)=>{
+      let label=g.start===i?'S':g.checkpoints?.includes(i)?'ABC'[g.checkpoints.indexOf(i)]:g.keys?.[i]?'K':g.portals?.some(p=>p.includes(i))?'P':g.onceNodes?.includes(i)?'①':g.switchNodes?.includes(i)?'↻':g.colorSwitches?.includes(i)?'◐':'';
+      if(!label)return null;
+      const t=element('text',{x,y:y+1,class:'node-label','aria-label':label});t.textContent=label;svg.append(t);return t;
+    });
+    g.edges.forEach(([a,b],i)=>{if(!g.locks?.[i]&&!g.colorEdges?.[i])return;const p=g.points[a],q=g.points[b];const t=element('text',{x:(p[0]+q[0])/2,y:(p[1]+q[1])/2-13,class:'channel-label'});t.textContent=g.locks?.[i]?'K ▣':g.colorEdges[i]==='R'?'R':'B';svg.append(t);});
+    bridgeMarks=[];
+    if(g.bridge)g.edges.forEach(([a,b],i)=>g.edges.slice(0,i).forEach(([c,d])=>{
+      if([a,b].includes(c)||[a,b].includes(d))return;
+      const p=g.points[a],q=g.points[b],r=g.points[c],t=g.points[d],dx=q[0]-p[0],dy=q[1]-p[1],ex=t[0]-r[0],ey=t[1]-r[1],den=dx*ey-dy*ex;if(Math.abs(den)<.01)return;
+      const u=((r[0]-p[0])*ey-(r[1]-p[1])*ex)/den,v=((r[0]-p[0])*dy-(r[1]-p[1])*dx)/den;if(u<.06||u>.94||v<.06||v>.94)return;
+      const transform=`translate(${p[0]+u*dx} ${p[1]+u*dy}) rotate(${Math.atan2(dy,dx)*180/Math.PI})`,path='M -12 0 Q 0 -18 12 0';
+      const mask=element('path',{d:path,transform,class:'bridge-mask'}),arc=element('path',{d:path,transform,class:'bridge-arc'});svg.append(mask,arc);bridgeMarks.push({i,arc});
+    }));
     halo = element('circle', { r: 23, class: 'cursor-halo', visibility: 'hidden' });
     cursorCore = element('circle', { r: 4, class: 'cursor-core', visibility: 'hidden' });
     svg.append(halo, cursorCore);
   }
   function render() {
-    const visited = new Set(route), g = levels[index];
-    edgesDOM.forEach((line, i) => line.setAttribute('class', 'edge' + (used.has(i) ? ' done' : hintEdge === i ? ' hint' : '')));
-    nodesDOM.forEach((node, i) => {
-      node.setAttribute('class', 'node' + (i === current || i === hintNode ? ' current' : visited.has(i) ? ' visited' : ''));
-      node.setAttribute('r', i === current || i === hintNode ? 11 : 9);
+    const g=levels[index],display=hintState||state||mechanics.initial(g,g.start??g.solution.start),visited=new Set((hintState||state)?.visited||[]),shown=hintState?hintState.counts:counts;
+    doubleLabels.forEach((label,i)=>{if(label)label.textContent=shown[i]?shown[i]+'/2':'×2';});
+    function edgeClass(i){return 'edge'+(mechanics.quota(g,i)===2?' double-edge':'')+(g.dynamicEdges?.[i]?' dynamic-edge':'')+(g.onceEdges?.[i]?' once-edge':'')+(g.colorEdges?.[i]==='R'?' red-channel':g.colorEdges?.[i]==='B'?' blue-channel':'')+(g.locks?.[i]&&!display.keys.includes(g.locks[i])?' locked-edge':'')+(g.colorEdges?.[i]&&g.colorEdges[i]!==display.color?' closed-channel':'')+(shown[i]>=mechanics.quota(g,i)?' done':shown[i]?' half':'')+(hintEdge===i?' hint':'');}
+    edgesDOM.forEach((line,i)=>line.setAttribute('class',edgeClass(i)));
+    bridgeMarks.forEach(({i,arc})=>arc.setAttribute('class',edgeClass(i)+' bridge-arc'));
+    arrowsDOM.forEach((arrow,i)=>{if(!arrow)return;const d=mechanics.direction(g,i,display),from=g.points[d[0]],to=g.points[d[1]];arrow.setAttribute('transform',`translate(${(from[0]+to[0])/2} ${(from[1]+to[1])/2}) rotate(${Math.atan2(to[1]-from[1],to[0]-from[0])*180/Math.PI})`);arrow.setAttribute('class','one-way-arrow'+(g.dynamicEdges?.[i]?' dynamic-arrow':'')+(g.onceEdges?.[i]?' once-arrow':'')+(shown[i]>=mechanics.quota(g,i)?' done':''));});
+    nodesDOM.forEach((node,i)=>{
+      node.setAttribute('class','node'+(g.switchNodes?.includes(i)?' switch-node':'')+(g.start===i?' start-node':'')+(g.portals?.some(p=>p.includes(i))?' portal-node':'')+(g.onceNodes?.includes(i)?' once-node':'')+(g.colorSwitches?.includes(i)?' color-node color-'+display.color:'')+(g.checkpoints?.includes(i)?' checkpoint-node':'')+(g.keys?.[i]?' key-node':'')+(i===current||i===hintNode?' current':visited.has(i)?' visited':''));
+      node.setAttribute('r',specialLabels[i]?13:i===current||i===hintNode?11:9);
     });
     const active = pointer !== null && preview !== null && !won;
     liveStroke.setAttribute('visibility', active ? 'visible' : 'hidden');
@@ -105,8 +119,9 @@ if (typeof document !== 'undefined') {
       liveStroke.setAttribute('class', 'live-stroke' + (preview.undo ? ' rewind' : ''));
       for (const cursor of [halo, cursorCore]) { cursor.setAttribute('cx', preview.point[0]); cursor.setAttribute('cy', preview.point[1]); }
     }
-    $('#count').textContent = used.size; $('#total').textContent = g.edges.length;
-    $('#bar').style.width = used.size / g.edges.length * 100 + '%';
+    const total=g.edges.reduce((n,_,i)=>n+mechanics.quota(g,i),0),done=shown.reduce((a,b)=>a+b,0);
+    $('#count').textContent = done; $('#total').textContent = total;
+    $('#bar').style.width = done / total * 100 + '%';
     $('#undo').disabled = history.length === 0 || pointer === null || won;
   }
   function scheduleRender() {
@@ -114,32 +129,33 @@ if (typeof document !== 'undefined') {
     frame = requestAnimationFrame(() => { frame = null; render(); });
   }
   function stopHint() {
-    clearInterval(hintTimer); hintTimer = null; hintEdge = -1; hintNode = -1; $('#hint').disabled = false;
+    clearInterval(hintTimer); hintTimer = null; hintState=null; hintRoute=[]; hintEdge = -1; hintNode = -1; $('#hint').disabled = false;
   }
-  function reset(message = '按住圆点出发 · 原路回拖可撤回') {
-    stopHint(); pointer = null; used.clear(); route = []; history = []; current = -1; last = null;
+  function reset(message) {
+    stopHint(); state=null; snapshots=[];portalPending=false; pointer = null; used.clear(); counts=levels[index].edges.map(()=>0); route = []; history = []; current = -1; last = null;
     selectedEdge = null; preview = null; offTrack = false; won = false;
-    $('#hint').disabled = false; $('#win').hidden = true; status(message); render();
+    $('#hint').disabled = false; $('#win').hidden = true; status(message || levels[index].ruleText || (Object.keys(levels[index].oneWay || {}).length ? '箭頭線只能順向走 · 回拖仍可撤回' : '按住圓點 · 一筆連完所有線段')); render();
   }
   function load(n) {
     index = n; buildBoard(); reset();
     $('#levelNo').textContent = String(n + 1).padStart(2, '0');
-    $('#levelName').textContent = n === 0 ? '从三角形开始' : levels[n].name;
-    $('#difficulty').textContent = n < 6 ? '初见 · 入门' : n < 13 ? '渐入 · 进阶' : '心流 · 挑战';
-    $('#start').innerHTML = '▶ ' + (completed.size ? '继续挑战' : '开始游戏') + ' <span>PRESS START</span>';
+    $('#levelName').textContent = levels[n].name;
+    $('#chapterLabel').textContent = 'CHAPTER ' + String(Math.floor(n / 25) + 1).padStart(2, '0') + ' / ' + chapters[Math.floor(n / 25)];
+    $('#difficulty').textContent = levels[n].difficultyLabel;
+    $('#start').innerHTML = '▶ ' + (completed.size ? '繼續冒險' : '開始冒險') + ' <span>PRESS START</span>';
   }
   function summary() {
-    unlocked = Math.min(19, Math.max(0, ...Array.from(completed, n => n + 1)));
+    unlocked = Math.min(levels.length - 1, Math.max(0, ...Array.from(completed, n => n + 1)));
     $('#completed').textContent = String(completed.size).padStart(2, '0');
-    $('#miniProgress').innerHTML = levels.map((_, i) => `<span class="${completed.has(i) ? 'done' : ''}"></span>`).join('');
+    $('#miniProgress').innerHTML = chapters.map((_, c) => `<span title="第 ${c+1} 章" class="${Array.from({length:25},(_,j)=>c*25+j).every(i=>completed.has(i)) ? 'done' : ''}"></span>`).join('');
   }
   function win() {
     won = true; pointer = null; preview = null; selectedEdge = null;
     completed.add(index); save(); summary(); render();
     $('#hint').disabled = false; $('#win').hidden = false;
-    $('#winTitle').textContent = index === 19 ? '全关制霸！' : '漂亮，一笔通关！';
-    $('#winText').textContent = index === 19 ? '20 关全部走过。回到关卡列表，再玩一局吧。' : 'STAGE CLEAR · 所有线段连接完成';
-    $('#next').textContent = index === 19 ? '选择关卡 ▦' : '下一关 ▶';
+    $('#winTitle').textContent = completed.size === levels.length ? '全關制霸！' : '漂亮，一筆通關！';
+    $('#winText').textContent = completed.size === levels.length ? '200 關的星光，都被你收集到了！' : (index + 1) % 25 === 0 ? '章節完成 · 下一顆星球等著你！' : 'STAGE CLEAR · 收集到一顆小星星';
+    $('#next').textContent = index === levels.length - 1 ? '選擇關卡 ▦' : '下一關 ▶';
     status('STAGE CLEAR!'); vibrate('win'); tone(true);
   }
   function point(e) {
@@ -162,42 +178,59 @@ if (typeof document !== 'undefined') {
   function choices() {
     return levels[index].edges.flatMap(([a, b], i) => {
       if (a !== current && b !== current) return [];
-      const undo = history.at(-1) === i;
-      return !used.has(i) || undo ? [{ i, next: a === current ? b : a, undo }] : [];
+      const undo = history.at(-1) === i && snapshots.at(-2)?.current === (a===current?b:a) && !(mechanics.quota(levels[index],i)===2 && counts[i]<2);
+      const next = a === current ? b : a;
+      return undo || counts[i]<mechanics.quota(levels[index],i) && canTraverse(levels[index],i,current,next,state) ? [{ i, next, undo }] : [];
     });
   }
-  function undoStep() {
+  function undoStep(fromDrag = false) {
     if (won || pointer === null || history.length === 0) return false;
-    used.delete(history.pop()); route.pop(); current = route.at(-1);
-    selectedEdge = null; offTrack = true; preview = { point: levels[index].points[current], undo: false };
-    status('已撤回一笔 · 保持按住，换条路试试'); vibrate('undo'); tone(false, true); render();
+    history.pop();snapshots.pop();state=snapshots.at(-1);counts=state.counts.slice();used=new Set(counts.flatMap((n,i)=>n===mechanics.quota(levels[index],i)?[i]:[]));route.pop();current=state.current;portalPending=false;
+    selectedEdge = null; offTrack = !fromDrag; preview = { point: levels[index].points[current], undo: false };
+    status('已撤回一筆 · 保持按住，換條路試試'); vibrate('undo'); tone(false, true); render();
     return true;
   }
   function sample(q) {
+    if(portalPending)return;
     const g = levels[index], start = g.points[current], tolerance = radius(inputType === 'touch' ? 25 : 21, 44);
+    const blocked = g.edges.flatMap(([a,b],i)=>{
+      if(counts[i]>=mechanics.quota(g,i)||history.at(-1)===i||a!==current&&b!==current)return [];
+      const next=a===current?b:a;
+      return canTraverse(g,i,current,next,state)?[]:[{...project(q,start,g.points[next]),next}];
+    }).find(c=>c.t>.25&&c.distance<radius(10,18));
+    if(blocked){offTrack=false;selectedEdge=null;preview={point:start,undo:false};status(mechanics.reason(g,state,g.edges.findIndex(([a,b])=>a===current&&b===blocked.next||b===current&&a===blocked.next)));return;}
     if (offTrack) {
       if (distance(q, preview?.point || start) > tolerance && distance(q, start) > tolerance) return;
       offTrack = false;
     }
-    if (distance(q, start) < radius(11, 23)) selectedEdge = null;
-    const candidates = choices().map(c => ({ ...c, ...project(q, start, g.points[c.next]) }));
+    const available = choices();
+    // A finger can round a junction without hitting its exact centre. Keep the
+    // whole arrival/turn area unlocked, including the tail of an undone edge.
+    const shortest = Math.min(...available.map(c => distance(start, g.points[c.next])));
+    const junctionRadius = Math.min(shortest * .45, radius(27, 44));
+    const inJunction = distance(q, start) <= junctionRadius;
+    if (inJunction) selectedEdge = null;
+    const candidates = available.map(c => ({ ...c, ...project(q, start, g.points[c.next]) }));
     let c = selectedEdge === null ? null : candidates.find(c => c.i === selectedEdge);
     if (!c) c = candidates.sort((a, b) => a.distance - b.distance)[0];
     if (!c || c.distance > tolerance) {
       if (distance(q, start) < tolerance) return;
-      offTrack = true; status('轻轻沿线走 · 回到描线处即可继续'); return;
+      offTrack = true; status('輕輕沿線走 · 回到描線處即可繼續'); return;
     }
-    if (c.t > .13) selectedEdge = c.i;
+    if (!inJunction && c.t > .2) selectedEdge = c.i;
     preview = { point: c.point, undo: c.undo };
-    if (c.t > .55 && distance(q, g.points[c.next]) < radius(inputType === 'touch' ? 18 : 13, 32)) {
-      if (c.undo) { undoStep(); }
+    const arrivalRadius = c.undo
+      ? Math.min(distance(start, g.points[c.next]) * .4, radius(25, 38))
+      : radius(inputType === 'touch' ? 18 : 13, 32);
+    if (c.t > .55 && distance(q, g.points[c.next]) < arrivalRadius) {
+      if (c.undo) { undoStep(true); }
       else {
-        used.add(c.i); history.push(c.i); route.push(c.next); current = c.next;
+        state=mechanics.step(g,state,c.i);if(!state)return;counts=state.counts.slice();if(counts[c.i]===mechanics.quota(g,c.i))used.add(c.i);history.push(c.i);snapshots.push(state);route.push(c.next);current=state.current;portalPending=current!==c.next;
         selectedEdge = null; preview = { point: g.points[current], undo: false };
         tone(); vibrate();
-        if (used.size === g.edges.length) { win(); return; }
-        const dead = !g.edges.some(([a, b], i) => !used.has(i) && (a === current || b === current));
-        status(dead ? '前方没路啦 · 保持按住，原路回拖撤回' : '保持按住继续 · 走错可原路回拖');
+        if (mechanics.complete(g,state)) { win(); return; }
+        const dead = !g.edges.some(([a,b],i)=>counts[i]<mechanics.quota(g,i)&&(a===current||b===current)&&canTraverse(g,i,current,a===current?b:a,state)); 
+        status(portalPending?'已傳送 · 保持按住移到另一個 P，B 可撤回':dead?'前方沒路啦 · 原路回拖或 B 撤回':'保持按住繼續 · 走錯可原路回拖');
       }
     }
   }
@@ -205,36 +238,38 @@ if (typeof document !== 'undefined') {
     if (pointer !== null || won || hintTimer || e.button !== 0) return;
     inputType = e.pointerType;
     const p = point(e), node = near(p);
-    if (node < 0) { status('先按住一个圆点，再沿线移动'); return; }
-    e.preventDefault(); reset(); pointer = e.pointerId; current = node; route = [node]; last = p;
+    if (node < 0) { status('先按住一個圓點，再沿線移動'); return; }
+    const initial=mechanics.initial(levels[index],node);if(!initial){status(levels[index].start!==undefined?'請從標示 S 的 START 出發':'請依檢查點 A → B → C 出發');return;}
+    e.preventDefault();reset();state=initial;snapshots=[state];counts=state.counts.slice();pointer=e.pointerId;current=node;route=[node];last=p;
     preview = { point: levels[index].points[node], undo: false };
     svg.setPointerCapture(e.pointerId); $('#hint').disabled = true;
-    status('保持按住 · 原路回拖可撤回'); vibrate('start'); render();
+    status(levels[index].ruleText || '保持按住 · 原路回拖可撤回'); vibrate('start'); render();
   });
   svg.addEventListener('pointermove', e => {
     if (e.pointerId !== pointer || won) return;
     e.preventDefault();
+    if(portalPending){const p=point(e);if(distance(p,levels[index].points[current])<radius(25,40)){portalPending=false;last=p;preview={point:levels[index].points[current],undo:false};status('已抵達出口 · 沿線繼續');scheduleRender();}return;}
     const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
     for (const event of events.length ? events : [e]) {
       if (pointer === null) break;
       const p = point(event), origin = last, steps = Math.max(1, Math.ceil(distance(origin, p) / 6));
       for (let s = 1; s <= steps; s++) {
         sample([origin[0] + (p[0] - origin[0]) * s / steps, origin[1] + (p[1] - origin[1]) * s / steps]);
-        if (pointer === null) break;
+        if (pointer === null||portalPending) break;
       }
       last = p;
     }
     scheduleRender();
   });
   function release(e) {
-    if (pointer !== null && (!e || e.pointerId === pointer)) reset('已松手，路线重置 · 按住圆点再来一局');
+    if (pointer !== null && (!e || e.pointerId === pointer)) reset('已鬆手，路線重置 · 按住圓點再試一次');
   }
   svg.addEventListener('pointerup', release);
   svg.addEventListener('pointercancel', release);
   svg.addEventListener('lostpointercapture', release);
   window.addEventListener('blur', () => release());
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { release(); if (hintTimer) { stopHint(); render(); status('提示已暂停，可重新查看'); } }
+    if (document.hidden) { release(); if (hintTimer) { stopHint(); render(); status('提示已暫停，可重新查看'); } }
   });
   // A second finger may use B while the drawing finger keeps its capture.
   $('#undo').addEventListener('pointerdown', e => {
@@ -250,46 +285,57 @@ if (typeof document !== 'undefined') {
   $('#hint').onclick = () => {
     if (pointer !== null || won || hintTimer) return;
     reset(); const g = levels[index], path = solve(g);
-    if (!path) { status('暂无提示'); return; }
-    let step = 0; hintNode = path[0]; $('#hint').disabled = true;
-    status('记住这条路线 · 演示后自己试试'); render();
-    hintTimer = setInterval(() => {
-      if (step >= path.length - 1) { stopHint(); render(); status('提示结束 · 按住刚才的起点试试吧'); return; }
-      const a = path[step], b = path[++step]; hintNode = b;
-      hintEdge = g.edges.findIndex(([x, y]) => x === a && y === b || x === b && y === a); render();
-    }, 550);
+    if (!path) { status('暫無提示'); return; }
+    let tick=0;hintState=mechanics.initial(g,path.start);hintNode=path.start;$('#hint').disabled=true;
+    status('跟著星光看路線 · 機關狀態同步演示');render();
+    hintTimer=setInterval(()=>{
+      if(tick>=path.edges.length){stopHint();render();status('提示結束 · 按住剛才的起點試試吧');return;}
+      hintEdge=path.edges[tick++];hintState=mechanics.step(g,hintState,hintEdge);hintNode=hintState.current;render();
+    },650);
   };
+
+  let selectedChapter = 0;
+  function renderChapter() {
+    $('#chapterTabs').innerHTML = chapters.map((name,c)=>`<button class="${selectedChapter===c?'selected':''}" data-chapter="${c}">${String(c+1).padStart(2,'0')} ${name}</button>`).join('');
+    const first=selectedChapter*25;
+    const done=levels.slice(first,first+25).filter((_,i)=>completed.has(first+i)).length;
+    $('#chapterDescription').textContent = `${chapters[selectedChapter]} · ${CHAPTER_MECHANICS[selectedChapter]} · ${done} / 25 顆星光`;
+    $('#levelGrid').innerHTML = levels.slice(first,first+25).map((_,j)=>{const n=first+j;return `<button ${n>unlocked?'disabled':''} class="${n===index?'selected':''}" data-level="${n}" aria-label="第 ${n+1} 關${n>unlocked?' 未解鎖':''}">${n>unlocked?'✧':String(n+1).padStart(2,'0')}<small>${completed.has(n)?'★ 已完成':n>unlocked?'未解鎖':levels[n].phase}</small></button>`}).join('');
+  }
   function showLevels() {
     if (pointer !== null) return;
-    stopHint(); render();
-    $('#levelGrid').innerHTML = levels.map((_, n) => `<button ${n > unlocked ? 'disabled' : ''} class="${n === index ? 'selected' : ''}" data-level="${n}" aria-label="第${n + 1}关${n > unlocked ? '，未解锁' : ''}">${n > unlocked ? '▦' : String(n + 1).padStart(2, '0')}<small>${completed.has(n) ? '已完成' : n > unlocked ? '未解锁' : '可挑战'}</small></button>`).join('');
+    stopHint(); render(); selectedChapter=Math.floor(index/25);renderChapter();
     $('#levelDialog').showModal();
   }
+  $('#chapterTabs').onclick=e=>{const b=e.target.closest('button');if(b){selectedChapter=Number(b.dataset.chapter);renderChapter()}};
+  $('#reset').onclick=()=>reset();
   $('#levelGrid').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) { load(Number(b.dataset.level)); $('#levelDialog').close(); } };
   $('#levelsBtn').onclick = showLevels;
   $('#closeDialog').onclick = () => $('#levelDialog').close();
   $('#levelDialog').onclick = e => {
     if (e.target === $('#levelDialog')) { const r = e.target.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.target.close(); }
   };
-  $('#next').onclick = () => index === 19 ? showLevels() : load(index + 1);
+  $('#next').onclick = () => index === levels.length - 1 ? showLevels() : load(index + 1);
   $('#replay').onclick = () => load(index);
   $('#start').onclick = () => {
     if (won) load(unlocked);
     $('.console').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center' });
-    status('按住圆点出发 · 原路回拖可撤回');
+    status(levels[index].ruleText || '按住圓點 · 一筆連完所有線段');
   };
   $('.brand').onclick = e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   function settingsLabels() {
-    $('#sound').textContent = '声音：' + (sound ? '开' : '关');
-    $('#sound').setAttribute('aria-label', sound ? '关闭声音' : '打开声音');
+    $('#sound').textContent = '聲音：' + (sound ? '開' : '關');
+    $('#sound').setAttribute('aria-label', sound ? '關閉聲音' : '開啟聲音');
     $('#sound').setAttribute('aria-pressed', String(sound));
-    $('#haptics').textContent = supportsHaptics ? '振动：' + (haptics ? '开' : '关') : '振动：不支持';
+    $('#haptics').textContent = supportsHaptics ? '振動：' + (haptics ? '開' : '關') : '振動：不支援';
     $('#haptics').disabled = !supportsHaptics;
-    $('#haptics').setAttribute('aria-label', supportsHaptics ? haptics ? '关闭振动' : '打开振动' : '此浏览器不支持振动');
+    $('#haptics').setAttribute('aria-label', supportsHaptics ? haptics ? '關閉振動' : '開啟振動' : '此瀏覽器不支援振動');
     $('#haptics').setAttribute('aria-pressed', String(haptics && supportsHaptics));
-    $('#hapticNote').textContent = supportsHaptics ? 'SOUND / HAPTICS' : '当前浏览器不支持触感振动';
+    $('#hapticNote').textContent = supportsHaptics ? 'SOUND / HAPTICS' : '此瀏覽器不支援觸感振動';
   }
   $('#sound').onclick = () => { sound = !sound; save(); settingsLabels(); tone(); };
   $('#haptics').onclick = () => { haptics = !haptics; save(); settingsLabels(); inputType = null; if (haptics) vibrate('start'); };
   settingsLabels(); summary(); load(index);
+  if(saved.puzzleSet!=='dream-v3'&&completed.size){status('題庫已更新 · 保留你的解鎖進度與設定');save();}
 }
+
