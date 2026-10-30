@@ -1,11 +1,12 @@
 const vm=require('vm'),fs=require('fs'),assert=require('assert'),M=require('./dist/mechanics.js');
 class El{constructor(){this.textContent='';this.style={};this.attrs={};this.events={};this.classList={add(){},remove(){}}}setAttribute(k,v){this.attrs[k]=v}append(){}replaceChildren(){}addEventListener(k,f){this.events[k]=f}getBoundingClientRect(){return {left:0,top:0,width:Number(process.env.BOARD_WIDTH)||480,height:(Number(process.env.BOARD_WIDTH)||480)*400/480}}setPointerCapture(){}showModal(){this.open=true}close(){this.open=false}scrollIntoView(){}}
 const els={};const $=q=>els[q]??=new El();let data={[process.env.LEGACY_PROGRESS?'one-line-v1':'kirby-line-demo-v1']:JSON.stringify({...(process.env.LEGACY_PROGRESS?{}:{puzzleSet:'geometric-v2'}),completed:Array.from({length:15},(_,i)=>i),sound:true,haptics:false})},interval;
-const ctx={LineMechanics:M,console,document:{querySelector:$,createElementNS:()=>new El(),addEventListener(){}},window:{addEventListener(){},scrollTo(){}},navigator:{},performance:{now:()=>100},localStorage:{getItem:k=>data[k]??null,setItem:(k,v)=>data[k]=v},setInterval:f=>(interval=f,1),clearInterval:()=>interval=null,requestAnimationFrame:()=>1,matchMedia:()=>({matches:true}),HTMLInputElement:class{},HTMLTextAreaElement:class{}};
+const windowEvents={},documentEvents={};
+const ctx={LineMechanics:M,console,document:{querySelector:$,createElementNS:()=>new El(),addEventListener(k,f){documentEvents[k]=f}},window:{addEventListener(k,f){windowEvents[k]=f},scrollTo(){}},navigator:{},performance:{now:()=>100},localStorage:{getItem:k=>data[k]??null,setItem:(k,v)=>data[k]=v},setInterval:f=>(interval=f,1),clearInterval:()=>interval=null,requestAnimationFrame:()=>1,matchMedia:()=>({matches:true}),HTMLInputElement:class{},HTMLTextAreaElement:class{}};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync('dist/levels.js','utf8'),ctx);
 let src=fs.readFileSync('dist/game.js','utf8'),end=src.lastIndexOf('}');src=src.slice(0,end)+"globalThis.test={load,reset,undoStep,get:()=>({state,won,pointer,current,completed:completed.size,steps:history.length,portalPending,offTrack,rejoinAtNode,previewPoint:preview?.point}),levels,solve};"+src.slice(end);vm.runInContext(src,ctx);const t=ctx.test;
 assert.equal(t.get().completed,15);assert.equal($('#levelNo').textContent,'16');assert(data['kirby-line-archive-v1']);
-function event(p){return {button:0,pointerType:process.env.INPUT_TYPE||'touch',pointerId:1,clientX:p[0]*(Number(process.env.BOARD_WIDTH)||480)/480,clientY:p[1]*(Number(process.env.BOARD_WIDTH)||480)/480,preventDefault(){}}}
+function event(p,pointerId=1){return {button:0,pointerType:process.env.INPUT_TYPE||'touch',pointerId,clientX:p[0]*(Number(process.env.BOARD_WIDTH)||480)/480,clientY:p[1]*(Number(process.env.BOARD_WIDTH)||480)/480,preventDefault(){}}}
 const board=$('#board');
 function start(g){board.events.pointerdown(event(g.points[g.solution.start]));}
 function move(g,i){const before=t.get().state,[a,b]=g.edges[i],entry=a===before.current?b:a;board.events.pointermove(event(g.points[entry]));if(t.get().portalPending&&!t.get().won)board.events.pointermove(event(g.points[t.get().current]));}
@@ -56,3 +57,31 @@ t.load(1);{
  board.events.pointermove(event(from));assert(!t.get().rejoinAtNode);board.events.pointermove(event(to));assert.equal(t.get().steps,2,'continue after B rejoin');
 }
 console.log('PASS: physical-pixel side tolerance, off-line progress retention, rejoin later on same edge, and B cancellation without accidental redraw.');
+// Every mechanism must survive lifting and reconnecting, without a second arrival.
+for(let n=0;n<200;n++){
+ t.load(n);const g=t.levels[n];start(g);
+ for(const i of g.solution.edges){
+  move(g,i);if(t.get().won)break;
+  const before=JSON.stringify(t.get().state),tip=t.get().previewPoint.slice();
+  board.events.pointerup(event(tip));assert.equal(t.get().pointer,null);assert.equal(JSON.stringify(t.get().state),before,'pause keeps all state '+n);
+  const far=g.points.find(p=>Math.hypot(p[0]-tip[0],p[1]-tip[1])>110);if(far){board.events.pointerdown(event(far));assert.equal(t.get().pointer,null,'wrong resume point');assert.equal(JSON.stringify(t.get().state),before);}
+  board.events.pointerdown(event(g.points[t.get().current]));assert.equal(t.get().pointer,1);assert.equal(JSON.stringify(t.get().state),before,'resume does not trigger arrivals '+n);
+ }
+ assert(t.get().won,'multi-stroke completion '+n);
+}
+t.load(1);{
+ const g=t.levels[1];start(g);const a=g.points[t.get().current],i=g.solution.edges[0],b=g.points[g.edges[i].find(v=>v!==t.get().current)],tip=along(a,b,.4);
+ board.events.pointermove(event(tip));const savedTip=t.get().previewPoint.slice(),before=JSON.stringify(t.get().state);
+ board.events.pointerup(event(tip,2));assert.equal(t.get().pointer,1,'other finger release ignored');
+ board.events.pointerup(event(tip));assert.equal(t.get().pointer,null);assert.deepEqual(t.get().previewPoint,savedTip,'unfinished stroke retained');assert.equal(JSON.stringify(t.get().state),before);
+ board.events.pointerdown(event(savedTip,7));assert.equal(t.get().pointer,7,'resume with new pointer ID');board.events.pointermove(event(b,7));assert.equal(t.get().steps,1);board.events.pointerup(event(b,7));
+ const drawn=JSON.stringify(t.get().state);$('#hint').onclick();let ticks=0;while(interval&&ticks++<200)interval();assert.equal(JSON.stringify(t.get().state),drawn,'hint preserves paused route');
+ assert.equal($('#undo').disabled,false,'B enabled while paused');t.undoStep();assert.equal(t.get().steps,0,'paused undo');assert.equal(t.get().pointer,null);
+ board.events.pointerdown(event(g.points[t.get().current]));move(g,i);const after=JSON.stringify(t.get().state);
+ board.events.pointercancel(event(g.points[t.get().current]));assert.equal(JSON.stringify(t.get().state),after,'cancel keeps route');
+ board.events.pointerdown(event(g.points[t.get().current]));windowEvents.blur();assert.equal(JSON.stringify(t.get().state),after,'blur keeps route');
+ board.events.pointerdown(event(g.points[t.get().current]));ctx.document.hidden=true;documentEvents.visibilitychange();ctx.document.hidden=false;assert.equal(JSON.stringify(t.get().state),after,'background keeps route');
+ board.events.pointerdown(event(g.points[t.get().current]));board.events.lostpointercapture(event(g.points[t.get().current]));assert.equal(JSON.stringify(t.get().state),after,'capture loss keeps route');
+ $('#reset').onclick();assert.equal(t.get().state,null,'explicit restart clears route');assert.equal(t.get().steps,0);
+}
+console.log('PASS: all 200 levels completed across lift/resume; partial strokes, new pointer IDs, wrong resume points, paused hints/undo, cancel/blur/background/capture loss, explicit restart.');

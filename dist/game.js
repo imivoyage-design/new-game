@@ -98,17 +98,18 @@ if (typeof document !== 'undefined') {
     svg.append(halo, cursorCore);
   }
   function render() {
-    const g=levels[index],display=hintState||state||mechanics.initial(g,g.start??g.solution.start),visited=new Set((hintState||state)?.visited||[]),shown=hintState?hintState.counts:counts;
+    const g=levels[index],display=hintState||state||mechanics.initial(g,g.start??g.solution.start),visited=new Set((hintState||state)?.visited||[]),shown=hintState?hintState.counts:counts,activeNode=hintState?hintNode:current;
     doubleLabels.forEach((label,i)=>{if(label)label.textContent=shown[i]?shown[i]+'/2':'×2';});
     function edgeClass(i){return 'edge'+(mechanics.quota(g,i)===2?' double-edge':'')+(g.dynamicEdges?.[i]?' dynamic-edge':'')+(g.onceEdges?.[i]?' once-edge':'')+(g.colorEdges?.[i]==='R'?' red-channel':g.colorEdges?.[i]==='B'?' blue-channel':'')+(g.locks?.[i]&&!display.keys.includes(g.locks[i])?' locked-edge':'')+(g.colorEdges?.[i]&&g.colorEdges[i]!==display.color?' closed-channel':'')+(shown[i]>=mechanics.quota(g,i)?' done':shown[i]?' half':'')+(hintEdge===i?' hint':'');}
     edgesDOM.forEach((line,i)=>line.setAttribute('class',edgeClass(i)));
     bridgeMarks.forEach(({i,arc})=>arc.setAttribute('class',edgeClass(i)+' bridge-arc'));
     arrowsDOM.forEach((arrow,i)=>{if(!arrow)return;const d=mechanics.direction(g,i,display),from=g.points[d[0]],to=g.points[d[1]];arrow.setAttribute('transform',`translate(${(from[0]+to[0])/2} ${(from[1]+to[1])/2}) rotate(${Math.atan2(to[1]-from[1],to[0]-from[0])*180/Math.PI})`);arrow.setAttribute('class','one-way-arrow'+(g.dynamicEdges?.[i]?' dynamic-arrow':'')+(g.onceEdges?.[i]?' once-arrow':'')+(shown[i]>=mechanics.quota(g,i)?' done':''));});
     nodesDOM.forEach((node,i)=>{
-      node.setAttribute('class','node'+(g.switchNodes?.includes(i)?' switch-node':'')+(g.start===i?' start-node':'')+(g.portals?.some(p=>p.includes(i))?' portal-node':'')+(g.onceNodes?.includes(i)?' once-node':'')+(g.colorSwitches?.includes(i)?' color-node color-'+display.color:'')+(g.checkpoints?.includes(i)?' checkpoint-node':'')+(g.keys?.[i]?' key-node':'')+(i===current||i===hintNode?' current':visited.has(i)?' visited':''));
-      node.setAttribute('r',specialLabels[i]?13:i===current||i===hintNode?11:9);
+      node.setAttribute('class','node'+(g.switchNodes?.includes(i)?' switch-node':'')+(g.start===i?' start-node':'')+(g.portals?.some(p=>p.includes(i))?' portal-node':'')+(g.onceNodes?.includes(i)?' once-node':'')+(g.colorSwitches?.includes(i)?' color-node color-'+display.color:'')+(g.checkpoints?.includes(i)?' checkpoint-node':'')+(g.keys?.[i]?' key-node':'')+(i===activeNode?' current':visited.has(i)?' visited':''));
+      node.setAttribute('r',specialLabels[i]?13:i===activeNode?11:9);
     });
-    const active = pointer !== null && preview !== null && !won;
+    // Keep the unfinished stroke and its resume target visible while paused.
+    const active = state !== null && preview !== null && !won && !hintState;
     liveStroke.setAttribute('visibility', active ? 'visible' : 'hidden');
     halo.setAttribute('visibility', active ? 'visible' : 'hidden');
     cursorCore.setAttribute('visibility', active ? 'visible' : 'hidden');
@@ -122,7 +123,7 @@ if (typeof document !== 'undefined') {
     const total=g.edges.reduce((n,_,i)=>n+mechanics.quota(g,i),0),done=shown.reduce((a,b)=>a+b,0);
     $('#count').textContent = done; $('#total').textContent = total;
     $('#bar').style.width = done / total * 100 + '%';
-    $('#undo').disabled = history.length === 0 || pointer === null || won;
+    $('#undo').disabled = history.length === 0 || won || !!hintTimer;
   }
   function scheduleRender() {
     if (frame !== null) return;
@@ -184,10 +185,10 @@ if (typeof document !== 'undefined') {
     });
   }
   function undoStep(fromDrag = false) {
-    if (won || pointer === null || history.length === 0) return false;
+    if (won || hintTimer || history.length === 0) return false;
     history.pop();snapshots.pop();state=snapshots.at(-1);counts=state.counts.slice();used=new Set(counts.flatMap((n,i)=>n===mechanics.quota(levels[index],i)?[i]:[]));route.pop();current=state.current;portalPending=false;
-    selectedEdge = null; offTrack = false; rejoinAtNode = !fromDrag; preview = { point: levels[index].points[current], undo: false };
-    status('已撤回一筆 · 保持按住，換條路試試'); vibrate('undo'); tone(false, true); render();
+    selectedEdge = null; offTrack = false; rejoinAtNode = !fromDrag && pointer !== null; preview = { point: levels[index].points[current], undo: false };
+    status(pointer===null?'已撤回一筆 · 按住亮點繼續':'已撤回一筆 · 保持按住，換條路試試'); vibrate('undo'); tone(false, true); render();
     return true;
   }
   function sample(q) {
@@ -246,6 +247,17 @@ if (typeof document !== 'undefined') {
     if (pointer !== null || won || hintTimer || e.button !== 0) return;
     inputType = e.pointerType;
     const p = point(e), node = near(p);
+    if (state) {
+      // Resuming never calls initial() or replays arrival effects. It only
+      // attaches a new pointer to the saved node or unfinished stroke tip.
+      const atNode=distance(p,levels[index].points[current])<=radius(inputType==='touch'?22:16,48);
+      const atTip=preview&&distance(p,preview.point)<=radius(inputType==='touch'?22:16,48);
+      if(!atNode&&!atTip){status('路線已保留 · 請按住亮點或線頭繼續');return;}
+      e.preventDefault();pointer=e.pointerId;last=p;offTrack=false;rejoinAtNode=false;
+      if(atNode){selectedEdge=null;preview={point:levels[index].points[current],undo:false};}
+      portalPending=false;svg.setPointerCapture(e.pointerId);$('#hint').disabled=true;
+      status('接著畫吧 · 可放手保留路線');render();return;
+    }
     if (node < 0) { status('先按住一個圓點，再沿線移動'); return; }
     const initial=mechanics.initial(levels[index],node);if(!initial){status(levels[index].start!==undefined?'請從標示 S 的 START 出發':'請依檢查點 A → B → C 出發');return;}
     e.preventDefault();reset();state=initial;snapshots=[state];counts=state.counts.slice();pointer=e.pointerId;current=node;route=[node];last=p;
@@ -270,7 +282,10 @@ if (typeof document !== 'undefined') {
     scheduleRender();
   });
   function release(e) {
-    if (pointer !== null && (!e || e.pointerId === pointer)) reset('已鬆手，路線重置 · 按住圓點再試一次');
+    if (pointer === null || e && e.pointerId !== pointer) return;
+    pointer=null;last=null;offTrack=false;rejoinAtNode=false;
+    $('#hint').disabled=false;
+    status('路線已保留 · 按住亮點或線頭繼續');render();
   }
   svg.addEventListener('pointerup', release);
   svg.addEventListener('pointercancel', release);
@@ -288,18 +303,19 @@ if (typeof document !== 'undefined') {
   $('#undo').addEventListener('click', e => { if (e.detail === 0) undoStep(); });
   window.addEventListener('keydown', e => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-    if (pointer !== null && (e.key.toLowerCase() === 'z' || e.key === 'Backspace')) { e.preventDefault(); undoStep(); }
+    if (history.length && !won && !hintTimer && (e.key.toLowerCase() === 'z' || e.key === 'Backspace')) { e.preventDefault(); undoStep(); }
   });
   $('#hint').onclick = () => {
     if (pointer !== null || won || hintTimer) return;
-    reset(); const g = levels[index], path = solve(g);
+    const g = levels[index], path = solve(g);
     if (!path) { status('暫無提示'); return; }
     let tick=0;hintState=mechanics.initial(g,path.start);hintNode=path.start;$('#hint').disabled=true;
-    status('跟著星光看路線 · 機關狀態同步演示');render();
+    status('跟著星光看路線 · 機關狀態同步演示');
     hintTimer=setInterval(()=>{
-      if(tick>=path.edges.length){stopHint();render();status('提示結束 · 按住剛才的起點試試吧');return;}
+      if(tick>=path.edges.length){stopHint();render();status(state?'提示結束 · 原路線已保留，按住亮點或線頭繼續':'提示結束 · 按住剛才的起點試試吧');return;}
       hintEdge=path.edges[tick++];hintState=mechanics.step(g,hintState,hintEdge);hintNode=hintState.current;render();
     },650);
+    render();
   };
 
   let selectedChapter = 0;
