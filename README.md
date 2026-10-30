@@ -4,7 +4,7 @@
 
 > 本 README 同時記錄需求與目前實作，更新日期為 2026 年 10 月 30 日。本次改版已實作 8 章、200 關與下列 10 種機制；原始碼、題庫、生成器與驗證腳本一併同步。自動驗證涵蓋解法與操作規則，關卡趣味與難度仍可依試玩調整。
 
-[改版 Demo](https://kirby-pocket-line-demo.abloompony7.chatgpt.site)（目前為私人試玩，需擁有者的 ChatGPT 帳號登入；實際功能以部署版本為準）
+[改版 Demo](https://kirby-pocket-line-demo.abloompony7.chatgpt.site)（已公開，可直接開啟遊玩與分享；實際功能以部署版本為準）
 
 ## 1 產品目標
 
