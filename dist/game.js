@@ -23,7 +23,7 @@ if (typeof document !== 'undefined') {
   let used = new Set(), counts = [], route = [], history = [], current = -1, pointer = null, inputType = null;
   let won = false, hintTimer = null, hintEdge = -1, hintNode = -1, last = null, audio;
   let doubleLabels = [], hintRoute = [], arrowsDOM = [], edgesDOM = [], nodesDOM = [], liveStroke, halo, cursorCore;
-  let preview = null, selectedEdge = null, offTrack = false, frame = null, lastBuzz = 0;
+  let preview = null, selectedEdge = null, offTrack = false, rejoinAtNode = false, frame = null, lastBuzz = 0;
   const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const supportsHaptics = typeof navigator.vibrate === 'function';
 
@@ -133,7 +133,7 @@ if (typeof document !== 'undefined') {
   }
   function reset(message) {
     stopHint(); state=null; snapshots=[];portalPending=false; pointer = null; used.clear(); counts=levels[index].edges.map(()=>0); route = []; history = []; current = -1; last = null;
-    selectedEdge = null; preview = null; offTrack = false; won = false;
+    selectedEdge = null; preview = null; offTrack = false; rejoinAtNode = false; won = false;
     $('#hint').disabled = false; $('#win').hidden = true; status(message || levels[index].ruleText || (Object.keys(levels[index].oneWay || {}).length ? '箭頭線只能順向走 · 回拖仍可撤回' : '按住圓點 · 一筆連完所有線段')); render();
   }
   function load(n) {
@@ -186,23 +186,27 @@ if (typeof document !== 'undefined') {
   function undoStep(fromDrag = false) {
     if (won || pointer === null || history.length === 0) return false;
     history.pop();snapshots.pop();state=snapshots.at(-1);counts=state.counts.slice();used=new Set(counts.flatMap((n,i)=>n===mechanics.quota(levels[index],i)?[i]:[]));route.pop();current=state.current;portalPending=false;
-    selectedEdge = null; offTrack = !fromDrag; preview = { point: levels[index].points[current], undo: false };
+    selectedEdge = null; offTrack = false; rejoinAtNode = !fromDrag; preview = { point: levels[index].points[current], undo: false };
     status('已撤回一筆 · 保持按住，換條路試試'); vibrate('undo'); tone(false, true); render();
     return true;
   }
   function sample(q) {
     if(portalPending)return;
-    const g = levels[index], start = g.points[current], tolerance = radius(inputType === 'touch' ? 25 : 21, 44);
+    // Measure the invisible hit corridor in CSS pixels, including on small phones.
+    // The old SVG-unit cap made a narrow phone less forgiving than a desktop.
+    const g = levels[index], start = g.points[current], tolerance = radius(inputType === 'touch' ? 31 : 25, 72);
+    if (rejoinAtNode) {
+      // B cancels a step while the finger may still be at its old endpoint.
+      // Do not immediately draw that step again before returning to the node.
+      if (distance(q, start) > tolerance) return;
+      rejoinAtNode = false;
+    }
     const blocked = g.edges.flatMap(([a,b],i)=>{
       if(counts[i]>=mechanics.quota(g,i)||history.at(-1)===i||a!==current&&b!==current)return [];
       const next=a===current?b:a;
       return canTraverse(g,i,current,next,state)?[]:[{...project(q,start,g.points[next]),next}];
     }).find(c=>c.t>.25&&c.distance<radius(10,18));
     if(blocked){offTrack=false;selectedEdge=null;preview={point:start,undo:false};status(mechanics.reason(g,state,g.edges.findIndex(([a,b])=>a===current&&b===blocked.next||b===current&&a===blocked.next)));return;}
-    if (offTrack) {
-      if (distance(q, preview?.point || start) > tolerance && distance(q, start) > tolerance) return;
-      offTrack = false;
-    }
     const available = choices();
     // A finger can round a junction without hitting its exact centre. Keep the
     // whole arrival/turn area unlocked, including the tail of an undone edge.
@@ -215,13 +219,17 @@ if (typeof document !== 'undefined') {
     if (!c) c = candidates.sort((a, b) => a.distance - b.distance)[0];
     if (!c || c.distance > tolerance) {
       if (distance(q, start) < tolerance) return;
-      offTrack = true; status('輕輕沿線走 · 回到描線處即可繼續'); return;
+      offTrack = true; status('路線已保留 · 移回這條線即可繼續'); return;
     }
+    // Rejoin anywhere on the active edge, not only beside the last accepted
+    // pointer position. Keep its branch lock so nearby crossings cannot steal it.
+    if (offTrack) status('已接回路線 · 保持按住繼續');
+    offTrack = false;
     if (!inJunction && c.t > .2) selectedEdge = c.i;
     preview = { point: c.point, undo: c.undo };
     const arrivalRadius = c.undo
       ? Math.min(distance(start, g.points[c.next]) * .4, radius(25, 38))
-      : radius(inputType === 'touch' ? 18 : 13, 32);
+      : Math.min(distance(start, g.points[c.next]) * .42, radius(inputType === 'touch' ? 22 : 15, 52));
     if (c.t > .55 && distance(q, g.points[c.next]) < arrivalRadius) {
       if (c.undo) { undoStep(true); }
       else {

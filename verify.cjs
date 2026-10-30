@@ -3,7 +3,7 @@ class El{constructor(){this.textContent='';this.style={};this.attrs={};this.even
 const els={};const $=q=>els[q]??=new El();let data={[process.env.LEGACY_PROGRESS?'one-line-v1':'kirby-line-demo-v1']:JSON.stringify({...(process.env.LEGACY_PROGRESS?{}:{puzzleSet:'geometric-v2'}),completed:Array.from({length:15},(_,i)=>i),sound:true,haptics:false})},interval;
 const ctx={LineMechanics:M,console,document:{querySelector:$,createElementNS:()=>new El(),addEventListener(){}},window:{addEventListener(){},scrollTo(){}},navigator:{},performance:{now:()=>100},localStorage:{getItem:k=>data[k]??null,setItem:(k,v)=>data[k]=v},setInterval:f=>(interval=f,1),clearInterval:()=>interval=null,requestAnimationFrame:()=>1,matchMedia:()=>({matches:true}),HTMLInputElement:class{},HTMLTextAreaElement:class{}};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync('dist/levels.js','utf8'),ctx);
-let src=fs.readFileSync('dist/game.js','utf8'),end=src.lastIndexOf('}');src=src.slice(0,end)+"globalThis.test={load,reset,undoStep,get:()=>({state,won,pointer,current,completed:completed.size,steps:history.length,portalPending}),levels,solve};"+src.slice(end);vm.runInContext(src,ctx);const t=ctx.test;
+let src=fs.readFileSync('dist/game.js','utf8'),end=src.lastIndexOf('}');src=src.slice(0,end)+"globalThis.test={load,reset,undoStep,get:()=>({state,won,pointer,current,completed:completed.size,steps:history.length,portalPending,offTrack,rejoinAtNode,previewPoint:preview?.point}),levels,solve};"+src.slice(end);vm.runInContext(src,ctx);const t=ctx.test;
 assert.equal(t.get().completed,15);assert.equal($('#levelNo').textContent,'16');assert(data['kirby-line-archive-v1']);
 function event(p){return {button:0,pointerType:process.env.INPUT_TYPE||'touch',pointerId:1,clientX:p[0]*(Number(process.env.BOARD_WIDTH)||480)/480,clientY:p[1]*(Number(process.env.BOARD_WIDTH)||480)/480,preventDefault(){}}}
 const board=$('#board');
@@ -37,3 +37,22 @@ for(let n=15;n<20;n++){t.load(n);const g=t.levels[n];const [i,d]=Object.entries(
 t.load(25);{const g=t.levels[25],i=g.doubleEdges[0],v=g.edges[i][0];board.events.pointerdown(event(g.points[v]));move(g,i);move(g,i);assert.equal(t.get().state.counts[i],2,'immediate red return counts');t.undoStep();assert.equal(t.get().state.counts[i],1,'B cancels red traversal');}
 for(const n of [0,25,50,75,100,125,150,175,199]){t.load(n);$('#hint').onclick();let ticks=0;while(interval&&ticks++<200)interval();assert(!interval,'hint terminates');assert.equal(t.get().steps,0,'hints do not solve/save stage');}
 console.log('PASS: rounded corners, physical rewind, reverse arrows, red immediate return versus B, complete hint playback for every mechanism.');
+// Physical-pixel corridors and rejoining after a real off-line excursion.
+const scale=480/(Number(process.env.BOARD_WIDTH)||480),offset=(process.env.INPUT_TYPE==='mouse'?23:28)*scale;
+function along(a,b,t,n=0){const dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);return [a[0]+t*dx-n*dy/len,a[1]+t*dy+n*dx/len];}
+t.load(1);{
+ const g=t.levels[1],p=g.solution;start(g);const a=g.points[t.get().current],i=p.edges[0],b=g.points[g.edges[i].find(v=>v!==t.get().current)];
+ // Choose the normal facing the inside of the square, away from its boundary.
+ const mid=along(a,b,.5),normal=along(a,b,.5,1),sign=(normal[0]-mid[0])*(240-mid[0])+(normal[1]-mid[1])*(200-mid[1])>=0?1:-1;
+ board.events.pointermove(event(along(a,b,.3,offset*sign)));assert(!t.get().offTrack,'physical side tolerance');
+ board.events.pointermove(event(along(a,b,.6,offset*sign)));assert(!t.get().offTrack,'parallel off-centre drag');
+ assert.equal(t.get().steps,0);assert.equal(t.get().pointer,1);board.events.pointermove(event(b));assert.equal(t.get().steps,1,'off-centre edge arrival');
+ const from=g.points[t.get().current],next=p.edges[1],to=g.points[g.edges[next].find(v=>v!==t.get().current)];
+ board.events.pointermove(event(along(from,to,.2)));const stateBefore=JSON.stringify(t.get().state);
+ board.events.pointermove(event(along(from,to,.2,90*scale)));assert(t.get().offTrack,'outside corridor pauses');assert.equal(JSON.stringify(t.get().state),stateBefore,'off-line movement keeps progress');
+ board.events.pointermove(event(along(from,to,.75)));assert(!t.get().offTrack,'rejoin farther along same edge');assert.equal(t.get().steps,1);assert(Math.hypot(t.get().previewPoint[0]-along(from,to,.75)[0],t.get().previewPoint[1]-along(from,to,.75)[1])<.01);
+ board.events.pointermove(event(to));assert.equal(t.get().steps,2);t.undoStep();assert(t.get().rejoinAtNode);
+ board.events.pointermove(event([to[0]+1,to[1]+1]));assert.equal(t.get().steps,1,'B does not immediately redraw');
+ board.events.pointermove(event(from));assert(!t.get().rejoinAtNode);board.events.pointermove(event(to));assert.equal(t.get().steps,2,'continue after B rejoin');
+}
+console.log('PASS: physical-pixel side tolerance, off-line progress retention, rejoin later on same edge, and B cancellation without accidental redraw.');
